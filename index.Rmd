@@ -1,0 +1,310 @@
+---
+title: "Iteratively Reweighted Least Squares"
+author: "Vadim Tyuryaev"
+date: "2025-04-16"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    includes:
+      in_header: meta.html
+code_download: true
+---
+# Introduction
+
+This technical blog provides a comprehensive demonstration of the
+**Iteratively Reweighted Least Squares (IRLS)** algorithm for estimating 
+coefficients in a [logistic regression](https://harvard-iacs.github.io/2018-CS109A/lectures/lecture-10/presentation/lecture10_logistic_regression1.pdf) model. Logistic regression is one of the most widely used 
+tools for modeling binary outcomes in disciplines ranging from from epidemiology 
+(e.g., cancer versus no cancer) to economics (e.g., credit default versus 
+non‑default). When posed as a generalized linear model with the canonical logit 
+link, maximum\‑likelihood estimation naturally leads to an elegant iterative
+scheme where IRLS algorithm transforms the nonlinear score equations into a 
+sequence of weighted least\‑squares problems on a “working response,” thereby
+leveraging the simplicity and numerical stability of ordinary least squares 
+within a Newton\‑Raphson framework.
+
+# Exponential Family
+
+Recall that one possible representation of an [exponential family](https://www.cs.princeton.edu/courses/archive/fall11/cos597C/lectures/exponential-families.pdf) is the following:
+$$
+f(y; \Theta, \phi)=exp\bigl\{\frac{y\eta(\Theta)-b(\Theta)}{a(\phi)}+c(y,\phi) \bigl\}
+$$
+In the [canonical form]([https://timothy-barry.github.io/posts/2020-07-07-generalized-linear-models/) $\eta(\Theta)=\Theta=g(\mu)$, and:
+$$
+f(y; \Theta, \phi)=exp\bigl\{\frac{y\Theta-b(\Theta)}{a(\phi)}+c(y,\phi) \bigl\}
+$$
+[Log\-likelihood](https://online.stat.psu.edu/stat415/lesson/1/1.2) in this case is:
+$$
+\log\{f(y; \Theta, \phi)\}=\frac{y\Theta-b(\Theta)}{a(\phi)}+c(y,\phi)=l(\Theta)
+$$
+Differentiating log-likelihood with respect to $\Theta$ produces score function $l^{\prime}(\Theta)$, whilst differentiating one more time results in the [observed](https://online.stat.psu.edu/stat504/lesson/x-1/x-1.6/x-1.6.5-observed-and-expected-information) Fisher information $l^{\prime\prime}(\Theta_i)$:
+$$
+l^{\prime}(\Theta)=\frac{y-b^{\prime}(\Theta)}{a(\phi)} \\
+l^{\prime\prime}(\Theta)=\frac{-b^{\prime\prime}(\Theta)}{a(\phi)} \\
+$$
+It can be shown that $E[l^{\prime}(\Theta)]=0$:
+$$
+\int{f(y|\Theta)}dy=1 \\
+\frac{\partial}{\partial\Theta}\int{f(y|\Theta)}dy=0 \\
+\int{\frac{\partial f(y|\Theta)}{\partial\Theta}}dy=0 \\
+\int{\frac{\partial f(y|\Theta)}{\partial\Theta} \times \frac{f(y|\Theta)}{f(y|\Theta)}}dy=0\\
+\int{\frac{\partial\log(f(y|\Theta))}{\partial\Theta}f(y|\Theta)}dy=E\bigl[ \frac{\partial\log(f(y|\Theta))}{\partial\Theta}\bigr]=E[l^{\prime}(\Theta)]=0\\
+$$
+It can also be shown that:
+$$
+E[-l^{\prime\prime}(\Theta)]=E\bigl[ -\frac{\partial^{2}\log(f(y|\Theta))}{\partial\Theta^{2}}\bigr]=cov\bigl[ \frac{\partial\log(f(y|\Theta))}{\partial\Theta}\bigr]=cov[l^{\prime}(\Theta)]=I(\Theta)
+$$
+where $I(\Theta)$ is the **Fisher Information** which is a [positive semidefinite](https://www.stat.umn.edu/geyer/s09/5102/slides/s3.pdf) matrix in the multivariate case.  
+
+Typically, we deal with the [i.i.d.](https://taylorandfrancis.com/knowledge/Engineering_and_technology/Engineering_support_and_special_topics/Independent_and_identically_distributed/) observations $y_1, .., y_N$ having a common 
+density $f(y|\mathbf{\Theta})$, therefore,log\-likelihood has the following form:
+$$
+l(\Theta)=\sum_{i=1}^{N}\log[f(y_i|\mathbf{\Theta})]
+$$
+The objective of the [Maximum Likelihood Estimation](https://www.sciencedirect.com/topics/mathematics/maximum-likelihood-estimation) is then:
+$$
+\hat{\Theta}_{MLE}=\underset{\Theta}{\mathrm{argmax}}(l(\Theta))
+$$
+
+# Newton\-Raphson Method and Fisher Scoring
+
+Let's perform [Taylor series approximation](https://www.sciencedirect.com/topics/engineering/taylor-series) of $l(\Theta)$ about $\Theta=\Theta_0$.
+$$
+l(\Theta) \approx l(\Theta_0)+l^{\prime}(\Theta_0)(\Theta-\Theta_0)
+$$
+Differentiate with respect to $\Theta$:
+$$
+l^{\prime}(\Theta) \approx l^{\prime}(\Theta_0)+l^{\prime\prime}(\Theta_0)(\Theta-\Theta_0)
+$$
+If $\Theta^{*}=\hat{\Theta}_{MLE}$, then $l^{\prime}(\Theta^{*})=0$. Therefore, plugging $\Theta=\Theta^{*}$:
+$$
+0 \approx l^{\prime}(\Theta_0)+l^{\prime\prime}(\Theta_0)(\Theta^{*}-\Theta_0)\\
+l^{\prime\prime}(\Theta_0)\Theta_0 \approx l^{\prime}(\Theta_0)+l^{\prime\prime}(\Theta_0)\Theta^{*} \\
+l^{\prime\prime}(\Theta_0)\Theta_0 - l^{\prime}(\Theta_0) \approx l^{\prime\prime}(\Theta_0)\Theta^{*} \\
+\Theta^{*}=\Theta_0-\frac{l^{\prime}(\Theta_0)}{l^{\prime\prime}(\Theta_0)}
+$$
+Thus, the algorithm starts at randomly initialized $\Theta_0$ and proceeds in the following
+manner until convergence:
+$$
+\Theta^{t}=\Theta_{t-1}-\frac{l^{\prime}(\Theta_{t-1})}{l^{\prime\prime}(\Theta_{t-1})}
+$$
+In the multivariate case:
+$$
+\mathbf{\Theta^{t}}=\mathbf{\Theta_{t-1}}-J^{-1}(\mathbf{\Theta_{t-1}})U(\mathbf{\Theta_{t-1}})
+$$
+Note that $J^{-1}(\mathbf{\Theta_{t-1}})$  might not be [invertible](https://deepai.org/machine-learning-glossary-and-terms/invertible-matrix), therefore, $l^{\prime\prime}(\Theta)$ can be replaced with its expected value:
+$$
+\Theta^{t}=\Theta_{t-1}-\frac{l^{\prime}(\Theta_{t-1})}{E[l^{\prime\prime}(\Theta_{t-1})]}=\Theta_{t-1}+\frac{l^{\prime}(\Theta_{t-1})}{E[-l^{\prime\prime}(\Theta_{t-1})]}= \Theta_{t-1}+\frac{l^{\prime}(\Theta_{t-1})}{I(\Theta_{t-1})}
+$$
+This method is called **Fisher Scoring** . It is straightforward to verify that for a canonical
+link function $\eta(\Theta)=\Theta$, Fisher Scoring method and Newton\-Raphson are equivalent, i.e.
+$E[l^{\prime\prime}(\Theta)]=\int{\frac{-b^{\prime\prime}(\Theta)}{a(\phi)}f(y|\Theta)}dy=\frac{-b^{\prime\prime}(\Theta)}{a(\phi)}=l^{\prime\prime}(\Theta)$.
+
+# Binomial Distribution
+
+## Binomial pmf as a member of the exponential families
+
+A binomial random variable  
+$$
+Y_i \sim \mathrm{Binomial}(n_i, p_i), 
+\quad
+E[Y_i] = \mu_i = n_ip_i,
+\quad
+\mathrm{Var}(Y_i) = n_ip_i(1-p_i),
+$$  
+has a probability mass function (pmf) that can be re-written in the exponential family form:
+$$
+P(Y_i=y_i)=\binom{n_i}{y_i}\,p_i^{y_i}\,(1-p_i)^{n_i-y_i}
+=\exp\bigl\{\log\bigl[\binom{n_i}{y_i}\,p_i^{y_i}\,(1-p_i)^{n_i-y_i}\bigr]\bigr\} \\
+=\exp\bigl\{\log\binom{n_i}{y_i} + \log(p_i^{y_i})+\log(1-p_i)^{n_i-y_i}) \bigr\} \\
+=\exp\bigl\{\log\binom{n_i}{y_i} + {y_i}\log(p_i)+(n_i-y_i)\log(1-p_i) \bigr\} \\
+=\exp\bigl\{\log\binom{n_i}{y_i} + {y_i}\log(p_i)-y_i\log(1-p_i) +n_i\log(1-p_i) \bigr\} \\
+=\exp\bigl\{y_i\log\frac{p_i}{1-p_i}+n_i\log(1-p_i)+\log\binom{n_i}{y_i}\bigr\}
+$$  
+
+Recall, that exponential family functions have the following form:
+$$ 
+f(y_i; \Theta_i, \phi)=exp\bigl\{\frac{y_i\Theta_i-b(\Theta_i)}{a(\phi)}+c(y_i,\phi) \bigl\}
+$$
+By comparison:
+$$
+\eta(\Theta_i)=\Theta_i=\log\frac{p_i}{1-p_i}=\log\frac{\frac{\mu_i}{n_i}}{1-\frac{\mu_i}{n_i}}=\log\frac{\mu_i}{n_i-\mu_i}=g(\mu_i) \\
+a(\phi)=1
+$$  
+Now:
+$$
+\Theta_i=\log\frac{p_i}{1-p_i} \rightarrow p_i=\frac{e^{\Theta_i}}{1+e^{\Theta_i}} \rightarrow \log(1-p_i)=\log(1-\frac{e^{\Theta_i}}{1+e^{\Theta_i}})  = -\log(1+e^{\Theta_i})=-\log(1+e^{\eta_i})
+$$
+
+Therefore, the density can be re-written as:
+$$
+P(Y_i=y_i)=\exp\bigl\{y_i\eta_i-n_i\log(1+e^{\eta_i})+\log\binom{n_i}{y_i}\bigr\}
+$$
+In the canonical GLM form:
+
+- **Natural parameter**: $\Theta_i = \eta_i=\log\frac{p_i}{1-p_i}$.  
+- **Cumulant**: $b(\Theta_i) = n_i\log\bigl(1+e^{\Theta_i}\bigr)$.  
+
+For N observations the log-likelihood function, ingoring the constant,  has the following form:
+$$
+\ell=\log \bigl[ \prod_{i=1}^{N}f(y_i;\Theta_i)\bigr]=\sum_{i=1}^{N}\bigl\{y_i\eta_i-n_i\log(1+e^{\eta_i})\bigr\}
+$$
+Linking $\mu_i$ and $\eta_i$ via the **logit** gives  
+$$
+\eta_i = g(\mu_i) = \log\frac{\mu_i}{n_i-\mu_i} =  \log\frac{p_i}{1-p_i} =\mathbf{x_i}^\top\mathbf{\beta}=\sum_{j=1}^{p}x_{ij}\beta_j
+$$
+Note:
+$$
+\ell=f(\mathbf{\eta}), \quad \eta=f(\mathbf{\beta}) \\
+$$
+Therfore:
+$$
+\frac{\partial\ell}{\partial\beta}=\frac{\partial\ell}{\partial\eta}\frac{\partial\eta}{\partial\beta}
+$$
+
+## Log\-Likelihood function, Score vector, and Hessian matrix
+
+1. Recall the **log\‑likelihood** (up to a constant):
+$$
+\ell(\beta)
+= \sum_{i=1}^N \bigl[y_i\,\eta_i - n_i\log(1+e^{\eta_i})\bigr].
+$$
+2. Calculate the **Score** (gradient):
+$$
+\frac{\partial\ell}{\partial\beta_j}=\sum_{i=1}^N \bigl[y_i - n_i\frac{e^{\eta_i}}{1+e^{\eta_i}}\bigr]x_{ij}=\sum_{i=1}^N \bigl[y_i - n_ip_i\bigr]x_{ij}=\sum_{i=1}^N \bigl[y_i - \mu_i\bigr]x_{ij}\\
+$$
+In the matrix form:
+$$
+U(\mathbf{\beta}) = X^\top(\mathbf{y} - \mathbf{\mu})
+$$
+3. Calculate the **Fisher information** (negative Hessian):
+$$
+-\frac{\partial}{\partial\beta_k}( \frac{\partial\ell}{\partial\beta_j})= -\frac{\partial}{\partial\beta_k}(\sum_{i=1}^N \bigl[y_i - n_i\frac{e^{\eta_i}}{1+e^{\eta_i}}\bigr]x_{ij} ) = \sum_{i=1}^N \bigl[n_i\frac{1}{(1+e^{\eta_i})^2}\bigr]x_{ij} = \sum_{i=1}^N \bigl[n_ip_i(1-p_i)\bigr]x_{ik}x_{ij}\\
+$$
+In the matrix form:
+$$
+   I(\mathbf{\beta)}= X^\top W X, \quad W =diag(w_{11}, ... ,w_{NN}), \quad w_{ii}= n_ip_i(1-p_i)
+      \quad
+$$
+
+## Newton\-Raphson & Weighted Least Squares
+
+The Newton update  
+$$
+\mathbf{\beta^{(t)}}= \mathbf{\beta^{(t-1)}}+ \bigl(X^\top W^{(t-1)}X\bigr)^{-1} X^\top\bigl(\mathbf{y} - \mathbf{\mu^{(t-1)}}\bigr)
+$$  
+can we rewritten as:
+$$
+\mathbf{\beta^{(t)}}= X^{-1}X\mathbf{\beta^{(t-1)}}+ \bigl(X^\top W^{(t-1)}X\bigr)^{-1} X^\top W^{(t-1)}(W^{(t-1)})^{-1} \bigl(\mathbf{y} - \mathbf{\mu^{(t-1)}}\bigr)\\
+=\bigl(X^\top W^{(t-1)}X\bigr)^{-1} X^\top W^{(t-1)}X\mathbf{\beta^{(t-1)}}+ \bigl(X^\top W^{(t-1)}X\bigr)^{-1} X^\top W^{(t-1)}(W^{(t-1)})^{-1} \bigl(\mathbf{y} - \mathbf{\mu^{(t-1)}}\bigr)\\
+=\bigl(X^\top W^{(t-1)}X\bigr)^{-1} X^\top W^{(t-1)}[ X\mathbf{\beta^{(t-1)}}+(W^{(t-1)})^{-1} \bigl(\mathbf{y} - \mathbf{\mu^{(t-1)}}\bigr)]\\
+=\bigl(X^\top W^{(t-1)}X\bigr)^{-1} X^\top W^{(t-1)}\mathbf{z^{(t-1)}}
+$$  
+This is equivalent to solving the **weighted** least‑squares problem (compare $(X^{T}X)^{-1}X^{T}\mathbf{y}$ and $(X^{T}W^{\frac{1}{2}}W^{\frac{1}{2}}X)^{-1}X^{T}W^{\frac{1}{2}}W^{\frac{1}{2}}\mathbf{z}$):  
+$$
+\underset{\beta}{\mathrm{argmin}}(z-X\beta)^{T}W(z-X\beta)
+$$
+which gives the **IRLS** method its name.
+
+# R Implementation
+
+## Notes
+
+- Under the canonical logit link, Fisher scoring coincides exactly with the Newton–Raphson procedure.
+- In many practical settings each observation is a single Bernoulli trial (i.e.\ $Y_i\in\{0,1\}$), so one may simply set $n_i=1$ and the same IRLS updates apply.
+- A recommended initialization for $\beta$ is obtained by regressing the empirical logit
+  $$
+    \log\frac{y_i + \varepsilon}{\,1 - y_i + \varepsilon}
+  $$
+  on the covariates.  Here a small constant $\varepsilon>0$ is added to numerator and denominator to guard against infinite values and improve numerical stability.
+  
+## Custom Function
+
+```{r}
+
+IRLS_logistic_binomial = function(data_matrix, Y, ni=1, maxiter = 25, tol = 1e-6) {
+  
+  n = nrow(data_matrix)
+  X = data_matrix
+  
+  # 1. Initialization via logit transform (+0.5 for stability)
+  y_init = log((Y + 0.5) / (1 - Y + 0.5))
+  lm0    = lm(y_init ~ X[ , -1])
+  betas  = matrix(coef(lm0), ncol = 1)
+  
+  # 2. Iterations
+  for (iter in seq_len(maxiter)) {
+    eta = X %*% betas
+    p   = exp(eta) / (1 + exp(eta))
+    mu  = ni*p
+    W   = diag(as.numeric(mu * (1 - p)), n, n)
+    #z   = eta + (Y - mu) / (mu * (1 - mu))
+    z   = eta + solve(W) %*% (Y - mu) 
+    
+    betas_new = solve(t(X) %*% W %*% X, t(X) %*% W %*% z)
+    
+    if (max(abs(betas_new - betas)) < tol) {
+      betas = betas_new
+      break
+    }
+    betas = betas_new
+  }
+  
+  drop(betas)
+  
+  return(betas)
+}
+```
+
+## Test data
+
+We will use [S&P Stock Market Data](https://rdrr.io/cran/ISLR/man/Smarket.html) 
+which is included in the `ISLR` package and the objective here is to predict the 
+direction of the market (positive or negative return) given percentage returns for 
+the previous five days and the volume traded. 
+
+```{r, warning=F}
+
+# install.packages("ISLR")
+
+require(ISLR)
+head(Smarket)
+
+```
+
+## Built-in function
+
+```{r}
+
+glm.fit = glm(Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume, 
+              data = Smarket, 
+              family = binomial(link="logit"))
+
+summary(glm.fit)
+
+```
+
+Note that the convergence criteria is met after **3** iterations of Fisher scoring. 
+
+## Direct calculations
+
+We will use the same 3 iterations to check if our results match the ones above. 
+For direct calculation some pre-processing is required. 
+
+```{r}
+
+x = Smarket[,2:7]                                                               # Returns at Lags 1-5 and Volume
+y = lapply(Smarket[,9],function(x) if(x =="Up") {1} else {0})                   # convert response to 0,1
+y=matrix(as.numeric(y), ncol=1)                                                 # convert to matrix
+
+x=cbind(matrix(rep(1,length(y)),ncol=1),x)                                      # add a column of 1s
+colnames(x)=NULL                                                                # remove column names
+rownames(x)=NULL                                                                # remove row names
+x=as.matrix(x)                                                                  # convert to matrix
+
+round(IRLS_logistic_binomial(x,y,maxiter = 3), 6)                               # 3 iterations
+   
+```
+
+As a matter of fact, our results **match** the previous calculations **exactly**.
