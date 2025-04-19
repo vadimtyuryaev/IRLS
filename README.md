@@ -8,7 +8,7 @@
 ![Static
 Badge](https://img.shields.io/badge/LinkedIn-https%3A%2F%2Fwww.linkedin.com%2Fin%2Fvadimtyuryaev%2F-blue)
 ![Static
-Badge](https://img.shields.io/badge/Medium-https://medium.com/@vadimtyuryaev-yellow)
+Badge](https://img.shields.io/badge/Medium-https://medium.com/@vadimtyuryaev-green)
 <!-- badges: end -->
 
 This repository provides a from‑first‑principles implementation of the
