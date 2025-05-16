@@ -38,7 +38,7 @@ $$
 $$
 \log\{f(y; \Theta, \phi)\}=\frac{y\Theta-b(\Theta)}{a(\phi)}+c(y,\phi)=l(\Theta)
 $$
-Differentiating log-likelihood with respect to $\Theta$ produces score function $l^{\prime}(\Theta)$, whilst differentiating one more time results in the [observed](https://online.stat.psu.edu/stat504/lesson/x-1/x-1.6/x-1.6.5-observed-and-expected-information) Fisher information $l^{\prime\prime}(\Theta_i)$:
+Differentiating log-likelihood with respect to $\Theta$ produces score function $l^{\prime}(\Theta)$, whilst differentiating one more time results in the [observed](https://online.stat.psu.edu/stat504/lesson/x-1/x-1.6/x-1.6.5-observed-and-expected-information) Fisher information $l^{\prime\prime}(\Theta)$:
 $$
 l^{\prime}(\Theta)=\frac{y-b^{\prime}(\Theta)}{a(\phi)} \\
 l^{\prime\prime}(\Theta)=\frac{-b^{\prime\prime}(\Theta)}{a(\phi)} \\
