@@ -21,7 +21,8 @@ mathematical derivation, the repository includes annotated R code and a
 real‑world case study using stock market data, offering both theoretical
 insight and practical application.
 
-You will:
+By visiting the website (`vadimtyuryaev.github.io/IRLS/`) and following
+the accompanying calculations and code implementations, you will:
 
 1.  **Understand the exponential‑family formulation** of the binomial
     distribution, and derive the log‑likelihood, score vector, and
